@@ -30,8 +30,8 @@ from datetime import datetime
 
 class TimerProtocol(Protocol):
     interval = 1.0 # interval in seconds to send the time
-    encoding = pyamf.AMF0
-    timeout = 300 
+    encoding = pyamf.AMF3
+    timeout = 300
 
     def __init__(self):
         self.started = False
@@ -40,20 +40,21 @@ class TimerProtocol(Protocol):
 
     def connectionLost(self, reason):
         Protocol.connectionLost(self, reason)
-
         self.factory.number_of_connections -= 1
+        print("Connection Lost")
 
     def connectionMade(self):
         if self.factory.number_of_connections >= self.factory.max_connections:
             self.transport.write('Too many connections, try again later')
             self.transport.loseConnection()
-
             return
 
         self.factory.number_of_connections += 1
+        print("Connection Made")
         self.timeout_deferred = reactor.callLater(TimerProtocol.timeout, self.transport.loseConnection)
 
     def dataReceived(self, data):
+        print(data)
         data = data.strip()
         if data == 'start':
             # start sending a date object that contains the current time
