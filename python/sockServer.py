@@ -18,27 +18,27 @@ import json, uuid, datetime
 
 class InstacareProtocol(Protocol):
     encoding = pyamf.AMF3
-    
+
     def __init__(self):
         self.encoder = pyamf.get_encoder(self.encoding)
         self.stream = self.encoder.stream
-    
+
     def connectionLost(self, reason):
         """
         Called when a connection is lost
         """
         self.factory.number_of_connections -= 1
         pass
-    
+
     def connectionMade(self):
         """
         Inherited from BaseProtocol
-        
+
         Called when a connection is made
         """
         self.factory.number_of_connections += 1
         print("Connection Made")
-    
+
     def dataReceived(self, data):
         """
         Handles all data received from client. All data from AS3/Flex
@@ -49,9 +49,9 @@ class InstacareProtocol(Protocol):
         except ValueError:
             print("Policy Request")
             return
-                
+
         data_dict = json.loads(data)
-        
+
         if data_dict['command'] == 'getInLine':
             self.getInLine(data_dict)
         elif data_dict['command'] == 'getNext':
@@ -60,15 +60,34 @@ class InstacareProtocol(Protocol):
             self.setupNewUser(data_dict)
         elif data_dict['command'] == 'chat':
             self.chat(data_dict)
+        elif data_dict['command'] == 'setupConsultationUser':
+            self.setupConsultationUser(data_dict)
         else:
             print(data_dict)
-    
+
     def chat(self, data):
         """
         Handles all chat communication between patient and employee
         """
         print("Send Chat message")
-    
+
+    def setupConsultationUser(self, data):
+        """
+        Setup new consultation connection
+        """
+        if data['user_type'] == 'patient':
+            self.uuid = data['consultationId']
+            self.user_type = 'patient'
+            self.conference_id = data['conferenceId']
+            print("ID: " + self.uuid.__str__())
+            print("User Type: " + self.user_type)
+        else:
+            self.uuid = data['empId']
+            self.user_type = data['user_type']
+            self.conference_id = data['conferenceId']
+            print("ID: " + self.uuid.__str__())
+            print("User Type: " + self.user_type)
+
     def setupNewUser(self, data):
         """
         Initial user connection.
@@ -91,10 +110,10 @@ class InstacareProtocol(Protocol):
             self.uuid = data['empId']
             self.user_type = data['user_type']
             self.status = 'queue'
-            self.consultation_id = False
+            self.conference_id = False
             print("ID: " + self.uuid.__str__())
             print("User Type: " + self.user_type)
-            
+
     def addToQueue(self):
         """
         Add user to proper queue based on user type
@@ -105,19 +124,7 @@ class InstacareProtocol(Protocol):
             self.factory.nurse_queue.append(self)
         elif self.status == 'doctor_queue':
             self.factory.doctor_queue.append(self) 
-
-    def getInLine(self, data):
-        """
-        Get in line command. Sets uuid and user type then adds
-        patient to the queue.
-        """
-        self.uuid = data['consultationId']
-        self.user_type = data['user_type']
-        self.status = 'queue'
-        print(self.uuid)
-        print(self.user_type)
-        self.factory.patient_queue.append(self)
-    
+ 
     def getNext(self, data):
         """
         Handles
@@ -133,6 +140,11 @@ class InstacareProtocol(Protocol):
             patient = queue.pop(0)
             consultation = ConsultationSession(patient, self)
             self.factory.consultations[consultation.id] = consultation
+            response = {'command': 'connectConsultation',
+                'consultID': patient.uuid.__str__(),
+                'conferenceID': consultation.id.__str__()}
+            self.transport.write(json.dumps(response))
+            patient.transport.write(json.dumps(response))
             print(self.factory.consultations)
 
 #        if len(self.factory.patient_queue) > 0:
@@ -144,9 +156,9 @@ class InstacareProtocol(Protocol):
 #            print(self.factory.consultations)
         else:
             print("No Patients")
-        
+
         print("ID: " + self.uuid.__str__())
-        print("C_ID: " + self.consultation_id.__str__())
+        print("C_ID: " + self.conference_id.__str__())
         print("User Type: " + self.user_type)
         print("GET NEXT")
         print('')
@@ -161,7 +173,7 @@ class ConsultationSession:
     """
     Handles connecting a patient with a doctor, nurse or scheduler
     """
-    
+
     def __init__(self, patient, employee):
         self.patient = patient
         self.employee = employee
@@ -177,7 +189,7 @@ class InstacareFactory(Factory):
     """
     protocol = InstacareProtocol
     max_connections = 1000
-    
+
     def __init__(self):
         self.number_of_connections = 0
         self.scheduler_queue = []
@@ -190,28 +202,28 @@ class InstacareFactory(Factory):
 class SocketPolicyProtocol(Protocol):
     """
     Serves strict policy file for Flash Player >= 9.0.124
-    
+
     @see: U{http://adobe.com/go/strict_policy_files}
     """
     def connectionMade(self):
         self.buffer = ''
-    
+
     def dataReceived(self, data):
         self.buffer += data
-        
+
         if self.buffer.startswith('<policy-file-request/>'):
             self.transport.write(self.factory.getPolicyFile(self))
             self.transport.loseConnection()
 
 class SocketPolicyFactory(Factory):
     protocol = SocketPolicyProtocol
-    
+
     def __init__(self, policy_file):
         """
         @param policy_file: Path to the policy file definition
         """
         self.policy_file = policy_file
-    
+
     def getPolicyFile(self, protocol):
         return open(self.policy_file, 'rt').read()
 
