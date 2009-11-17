@@ -28,7 +28,6 @@ class InstacareProtocol(Protocol):
         Called when a connection is lost
         """
         self.factory.number_of_connections -= 1
-        pass
 
     def connectionMade(self):
         """
@@ -47,21 +46,20 @@ class InstacareProtocol(Protocol):
         try:
             data_dict = json.loads(data)
         except ValueError:
-            print("Policy Request")
+            if data.__str__() == '<policy-file-request/>':
+                self.transport.loseConnection()
             return
 
         data_dict = json.loads(data)
 
-        if data_dict['command'] == 'getInLine':
-            self.getInLine(data_dict)
-        elif data_dict['command'] == 'getNext':
-            self.getNext(data_dict)
-        elif data_dict['command'] == 'setupNewUser':
+        if data_dict['command'] == 'setupNewUser':
             self.setupNewUser(data_dict)
-        elif data_dict['command'] == 'chat':
-            self.chat(data_dict)
         elif data_dict['command'] == 'setupConsultationUser':
             self.setupConsultationUser(data_dict)
+        elif data_dict['command'] == 'getNext':
+            self.getNext(data_dict)
+        elif data_dict['command'] == 'newChatMsg':
+            self.chat(data_dict)
         else:
             print(data_dict)
 
@@ -69,7 +67,24 @@ class InstacareProtocol(Protocol):
         """
         Handles all chat communication between patient and employee
         """
-        print("Send Chat message")
+        print("Connections: " + self.factory.number_of_connections.__str__())
+        consultation = self.factory.consultations[self.conference_id.__str__()]
+
+        if self.user_type == 'patient':
+            user = 'Patient: '
+        else:
+            user = 'Employee: '
+
+        response = {'command': 'newChatMsg',
+            'chatMsg': user + data['chatMsg']}
+        consultation.patient.transport.write(json.dumps(response))
+        consultation.employee.transport.write(json.dumps(response))
+
+    def pushPatient(self):
+        """
+        End consultation and push patient on to the next queue.
+        """
+        pass
 
     def setupConsultationUser(self, data):
         """
@@ -79,14 +94,29 @@ class InstacareProtocol(Protocol):
             self.uuid = data['consultationId']
             self.user_type = 'patient'
             self.conference_id = data['conferenceId']
+            self.setupConsultationReconnect()
             print("ID: " + self.uuid.__str__())
             print("User Type: " + self.user_type)
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
             self.conference_id = data['conferenceId']
+            self.setupConsultationReconnect()
             print("ID: " + self.uuid.__str__())
             print("User Type: " + self.user_type)
+
+    def setupConsultationReconnect(self):
+        """
+        Hack since we lose connections
+
+        Find consultation session from previous connection and
+        override the patient or employee with the new connection
+        """
+        consultation = self.factory.consultations[self.conference_id]
+        if self.user_type == 'patient':
+            consultation.patient = self
+        else:
+            consultation.employee = self
 
     def setupNewUser(self, data):
         """
@@ -113,6 +143,7 @@ class InstacareProtocol(Protocol):
             self.conference_id = False
             print("ID: " + self.uuid.__str__())
             print("User Type: " + self.user_type)
+        print("Connections: " + self.factory.number_of_connections.__str__())
 
     def addToQueue(self):
         """
@@ -139,21 +170,15 @@ class InstacareProtocol(Protocol):
         if len(queue) > 0:
             patient = queue.pop(0)
             consultation = ConsultationSession(patient, self)
-            self.factory.consultations[consultation.id] = consultation
+            self.factory.consultations[consultation.id.__str__()] = consultation
             response = {'command': 'connectConsultation',
                 'consultID': patient.uuid.__str__(),
                 'conferenceID': consultation.id.__str__()}
             self.transport.write(json.dumps(response))
             patient.transport.write(json.dumps(response))
+            self.transport.loseConnection()
+            patient.transport.loseConnection()
             print(self.factory.consultations)
-
-#        if len(self.factory.patient_queue) > 0:
-#            patient = self.factory.patient_queue.pop(0)
-#            consultation = ConsultationSession(patient, self)
-#            self.factory.consultations[consultation.id] = consultation
-#            print(consultation.employee.uuid)
-#            print(consultation.patient.uuid)
-#            print(self.factory.consultations)
         else:
             print("No Patients")
 
@@ -162,12 +187,7 @@ class InstacareProtocol(Protocol):
         print("User Type: " + self.user_type)
         print("GET NEXT")
         print('')
-#        self.uuid = data['empId']
-#        self.user_type = data['user_type']
-#        self.status = 'queue'
-#        print(self.uuid)
-#        print(self.user_type)
-#        self.factory.doctor_queue.append(self)
+        print("Connections: " + self.factory.number_of_connections.__str__())
 
 class ConsultationSession:
     """
@@ -197,16 +217,26 @@ class InstacareFactory(Factory):
         self.doctor_queue = []
         self.consultations = {}
 
-
-
 class SocketPolicyProtocol(Protocol):
     """
     Serves strict policy file for Flash Player >= 9.0.124
 
     @see: U{http://adobe.com/go/strict_policy_files}
     """
+    buffer = ''
+    def connectionLost(self, reason):
+        """
+        Called when a connection is lost
+        """
+        print("Policy connection lost")
+
     def connectionMade(self):
-        self.buffer = ''
+        """
+        Inherited from BaseProtocol
+
+        Called when a connection is made
+        """
+        print("Policy Connection Made")
 
     def dataReceived(self, data):
         self.buffer += data
