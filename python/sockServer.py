@@ -60,6 +60,8 @@ class InstacareProtocol(Protocol):
             self.getNext(data_dict)
         elif data_dict['command'] == 'newChatMsg':
             self.chat(data_dict)
+        elif data_dict['command'] == 'pushPatient':
+            self.pushPatient(data_dict)
         else:
             print(data_dict)
 
@@ -80,11 +82,43 @@ class InstacareProtocol(Protocol):
         consultation.patient.transport.write(json.dumps(response))
         consultation.employee.transport.write(json.dumps(response))
 
-    def pushPatient(self):
+    def pushPatient(self, data):
         """
         End consultation and push patient on to the next queue.
+
+        Clear employee conference ID and tell employee connection to
+        get next patient.
+
+        Patient has conference ID cleared and status variable set to
+        set which queue to place them in on reconnect
         """
-        pass
+        consultation = self.factory.consultations[self.conference_id.__str__()]
+
+        if self.user_type == 'admissions':
+            consultation.patient.status = 'nurse_queue'
+        elif self.user_type == 'nurse':
+            consultation.patient.status = 'doctor_queue'
+        elif self.user_type == 'doctor':
+            consultation.patient.status = 'scheduler_queue'
+        elif self.user_type == 'scheduler':
+            consultation.patient.status = 'done'
+
+        consultation.patient.conference_id = None
+        consultation.employee.conference_id = None
+
+        del self.factory.consultations[consultation.id.__str__()]
+
+        patient_response = {'command': 'pushPatient', 
+            'status': consultation.patient.status}
+        employee_response = {'command': 'resetEmployee'}
+
+        consultation.patient.transport.write(json.dumps(patient_response))
+        consultation.employee.transport.write(json.dumps(employee_response))
+
+        consultation.patient.transport.loseConnection()
+        consultation.employee.transport.loseConnection()
+
+        del consultation
 
     def setupConsultationUser(self, data):
         """
@@ -125,17 +159,17 @@ class InstacareProtocol(Protocol):
         if data['user_type'] == 'patient':
             self.uuid = data['consultationId']
             self.user_type = data['user_type']
-
-            try:
-                self.status = data['status']
-            except KeyError:
-                self.status = False
-
+            self.status = data['status']
             self.consultation_id = False
-            self.queue_position = False
+            self.addToQueue()
             print("ID: " + self.uuid.__str__())
             print("User Type: " + self.user_type)
-            self.addToQueue()
+            print("Queue Position: " + self.status)
+            print("Admissions Queue: " + self.factory.admissions_queue.__str__())
+            print("Nurse Queue: " + self.factory.nurse_queue.__str__())
+            print("Doctor Queue: " + self.factory.doctor_queue.__str__())
+            print("Scheduler Queue: " + self.factory.scheduler_queue.__str__())
+#            self.addToQueue()
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
@@ -149,23 +183,29 @@ class InstacareProtocol(Protocol):
         """
         Add user to proper queue based on user type
         """
-        if self.status is False:
-            self.factory.scheduler_queue.append(self)
+        if self.status == 'admissions_queue':
+            self.factory.admissions_queue.append(self)
         elif self.status == 'nurse_queue':
             self.factory.nurse_queue.append(self)
         elif self.status == 'doctor_queue':
-            self.factory.doctor_queue.append(self) 
+            self.factory.doctor_queue.append(self)
+        elif self.status == 'scheduler_queue':
+            self.factory.scheduler_queue.append(self)
  
     def getNext(self, data):
         """
-        Handles
+        Loop for employees that checks for new patients in their
+        respective queues. Once found user is popped out of queue list
+        and connected to a consultation session.
         """
-        if self.user_type == 'scheduler':
-            queue = self.factory.scheduler_queue
+        if self.user_type == 'admissions':
+            queue = self.factory.admissions_queue
         elif self.user_type == 'nurse':
             queue = self.factory.nurse_queue
         elif self.user_type == 'doctor':
             queue = self.factory.doctor_queue
+        elif self.user_type == 'scheduler':
+            queue = self.factory.scheduler_queue
 
         if len(queue) > 0:
             patient = queue.pop(0)
@@ -191,7 +231,7 @@ class InstacareProtocol(Protocol):
 
 class ConsultationSession:
     """
-    Handles connecting a patient with a doctor, nurse or scheduler
+    Handles connecting a patient with a doctor, admissions, nurse or scheduler
     """
 
     def __init__(self, patient, employee):
@@ -212,9 +252,10 @@ class InstacareFactory(Factory):
 
     def __init__(self):
         self.number_of_connections = 0
-        self.scheduler_queue = []
+        self.admissions_queue = []
         self.nurse_queue = []
         self.doctor_queue = []
+        self.scheduler_queue = []
         self.consultations = {}
 
 class SocketPolicyProtocol(Protocol):
