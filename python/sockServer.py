@@ -93,7 +93,9 @@ class InstacareProtocol(Protocol):
         get next patient.
 
         Patient has conference ID cleared and status variable set to
-        set which queue to place them in on reconnect
+        which queue to place them in on reconnect. This var is passed
+        from javascript to an AS3 var which finally gets written back
+        to the socket on reconnect.
         """
         consultation = self.factory.consultations[self.conference_id.__str__()]
 
@@ -106,21 +108,27 @@ class InstacareProtocol(Protocol):
         elif self.user_type == 'scheduler':
             consultation.patient.status = 'done'
 
+        # Clear conference ID from both users
         consultation.patient.conference_id = None
         consultation.employee.conference_id = None
 
-        del self.factory.consultations[consultation.id.__str__()]
-
+        # Create responses for both users
         patient_response = {'command': 'pushPatient', 
             'status': consultation.patient.status}
         employee_response = {'command': 'resetEmployee'}
 
+        # Send reponse to users
         consultation.patient.transport.write(json.dumps(patient_response))
         consultation.employee.transport.write(json.dumps(employee_response))
 
+        # Close socket connections
         consultation.patient.transport.loseConnection()
         consultation.employee.transport.loseConnection()
 
+        # Clean up. Delete consultation from dictionary on factory
+        # All references to object should be gone at this point so 
+        # garbage collection should take care of this.
+        del self.factory.consultations[consultation.id.__str__()]
         del consultation
 
     def setupConsultationUser(self, data):
