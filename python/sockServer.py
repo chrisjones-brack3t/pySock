@@ -134,21 +134,20 @@ class InstacareProtocol(Protocol):
     def setupConsultationUser(self, data):
         """
         Setup new consultation connection
+
+        This method handles setting the reconneted user after
+        coming from the queue.
         """
         if data['user_type'] == 'patient':
             self.uuid = data['consultationId']
             self.user_type = 'patient'
             self.conference_id = data['conferenceId']
             self.setupConsultationReconnect()
-            print("ID: " + self.uuid.__str__())
-            print("User Type: " + self.user_type)
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
             self.conference_id = data['conferenceId']
             self.setupConsultationReconnect()
-            print("ID: " + self.uuid.__str__())
-            print("User Type: " + self.user_type)
 
     def setupConsultationReconnect(self):
         """
@@ -156,6 +155,9 @@ class InstacareProtocol(Protocol):
 
         Find consultation session from previous connection and
         override the patient or employee with the new connection
+
+        Consultation is held on the InstacareFactory so that we can
+        reconnect the users in a consultation
         """
         consultation = self.factory.consultations[self.conference_id]
         if self.user_type == 'patient':
@@ -166,6 +168,8 @@ class InstacareProtocol(Protocol):
     def setupNewUser(self, data):
         """
         Initial user connection.
+
+        Sets up new users or employees on first queue connection
         """
         if data['user_type'] == 'patient':
             self.uuid = data['consultationId']
@@ -173,22 +177,11 @@ class InstacareProtocol(Protocol):
             self.status = data['status']
             self.consultation_id = False
             self.addToQueue()
-            print("ID: " + self.uuid.__str__())
-            print("User Type: " + self.user_type)
-            print("Queue Position: " + self.status)
-            print("Admissions Queue: " + self.factory.admissions_queue.__str__())
-            print("Nurse Queue: " + self.factory.nurse_queue.__str__())
-            print("Doctor Queue: " + self.factory.doctor_queue.__str__())
-            print("Scheduler Queue: " + self.factory.scheduler_queue.__str__())
-#            self.addToQueue()
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
             self.status = 'queue'
             self.conference_id = False
-            print("ID: " + self.uuid.__str__())
-            print("User Type: " + self.user_type)
-        print("Connections: " + self.factory.number_of_connections.__str__())
 
     def addToQueue(self):
         """
@@ -229,20 +222,14 @@ class InstacareProtocol(Protocol):
             patient.transport.write(json.dumps(response))
             self.transport.loseConnection()
             patient.transport.loseConnection()
-            print(self.factory.consultations)
-        else:
-            print("No Patients")
-
-        print("ID: " + self.uuid.__str__())
-        print("C_ID: " + self.conference_id.__str__())
-        print("User Type: " + self.user_type)
-        print("GET NEXT")
-        print('')
-        print("Connections: " + self.factory.number_of_connections.__str__())
 
 class ConsultationSession:
     """
     Handles connecting a patient with a doctor, admissions, nurse or scheduler
+
+    This class is responsible for providing a simple object to communicate
+    to both users involved in a conference. Each conference object is given a
+    unique UUID.
     """
 
     def __init__(self, patient, employee):
@@ -257,6 +244,9 @@ class InstacareFactory(Factory):
     """
     Factory manages all connection-related events. Each successful
     connection will create a new Instacare Protocol
+
+    This factory acts a singleton or a service in Twisted terms. Each new
+    connection to this class creates a new InstacareProtocol.
     """
     protocol = InstacareProtocol
     max_connections = 1000
@@ -321,36 +311,3 @@ def cleanUp(protocol):
     Looks for dead connections and removes them
     """
     print(protocol.factory.consultations)
-
-#pdb.set_trace()
-#    import gc
-#    for o in gc.get_objects():
-#        if isinstance(o, InstacareFactory):
-#            print(o.consultations)
-#    print("cleanUp method ran")
-
-#clean = task.LoopingCall(cleanUp)
-#clean.start(3.0)
-
-
-#if __name__ == '__main__':
-#    from optparse import OptionParser
-#    
-#    parser = OptionParser()
-#    parser.add_option("--host", default=host,
-#        dest="host", help="host address [default: %default]")
-#    parser.add_option("-a", "--app-port", default=appPort,
-#        dest="app_port", help="Application port number [default: %default]")
-#    parser.add_option("-p", "--policy-port", default=policyPort,
-#        dest="policy_port", help="Socket policy port number [default: %default]")
-#    parser.add_option("-f", "--policy-file", default=policyFile,
-#        dest="policy_file", help="Location of socket policy file [default: %default]")
-#    (opt, args) = parser.parse_args()
-#
-#    print "Running Socket AMF gateway on %s:%s" % (opt.host, opt.app_port)
-#    print "Running Policy file server on %s:%s" % (opt.host, opt.policy_port)
-#    
-#    reactor.listenTCP(int(opt.app_port), TimerFactory(), interface=opt.host)
-#    reactor.listenTCP(int(opt.policy_port), SocketPolicyFactory(opt.policy_file),
-#        interface=opt.host)
-#    reactor.run()
