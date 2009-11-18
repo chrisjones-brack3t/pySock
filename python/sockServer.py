@@ -42,6 +42,9 @@ class InstacareProtocol(Protocol):
         """
         Handles all data received from client. All data from AS3/Flex
         should be sent as JSON.
+
+        First connection to port is actually a xml security check. All
+        connections after that should be JSON encoded.
         """
         try:
             data_dict = json.loads(data)
@@ -69,13 +72,13 @@ class InstacareProtocol(Protocol):
         """
         Handles all chat communication between patient and employee
         """
-        print("Connections: " + self.factory.number_of_connections.__str__())
         consultation = self.factory.consultations[self.conference_id.__str__()]
+        time_response = datetime.datetime.now().strftime('%H:%M')
 
         if self.user_type == 'patient':
-            user = 'Patient: '
+            user = 'Patient[' + time_response + ']: '
         else:
-            user = 'Employee: '
+            user = 'Employee[' + time_response + ']: '
 
         response = {'command': 'newChatMsg',
             'chatMsg': user + data['chatMsg']}
