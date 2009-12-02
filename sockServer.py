@@ -4,7 +4,7 @@ TRNXS.NET Socket Server
 
 try:
     from twisted.internet.protocol import Protocol, Factory
-    from twisted.internet import reactor, task
+    from twisted.internet import reactor
 except ImportError:
     print("Twisted library is missing. Download it from http://twistedmatrix.com")
     raise SystemExit
@@ -14,7 +14,7 @@ try:
 except ImportError:
     print("PyAMF library is missing. Download it from http://pyamf.org")
 
-import json, uuid, datetime
+import json, uuid, datetime, gc
 
 class InstacareProtocol(Protocol):
     encoding = pyamf.AMF3
@@ -22,6 +22,7 @@ class InstacareProtocol(Protocol):
     def __init__(self):
         self.encoder = pyamf.get_encoder(self.encoding)
         self.stream = self.encoder.stream
+        self.last_active = datetime.datetime.now()
 
     def connectionLost(self, reason):
         """
@@ -54,6 +55,7 @@ class InstacareProtocol(Protocol):
             return
 
         data_dict = json.loads(data)
+        self.last_active = datetime.datetime.now() # Update active timestamp
 
         if data_dict['command'] == 'setupNewUser':
             self.setupNewUser(data_dict)
@@ -306,8 +308,16 @@ appPort = 8000
 policyPort = 843
 policyFile = 'socket-policy.xml'
 
-def cleanUp(protocol):
+def killItWithFire():
     """
-    Looks for dead connections and removes them
+    Finds all InstacareProtocols and checks timestamps
     """
-    print(protocol.factory.consultations)
+    for obj in gc.get_objects():
+        if isinstance(obj, InstacareProtocol):
+            now = datetime.datetime.now()
+            kill_it = now - datetime.timedelta(seconds=10)
+            if obj.last_active <= kill_it:
+                print("KILL IT WITH FIRE!")
+                obj.transport.loseConnection()
+            else:
+                print("HE CAN LIVE, FOR NOW")
