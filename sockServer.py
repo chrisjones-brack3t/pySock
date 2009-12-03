@@ -23,11 +23,14 @@ class InstacareProtocol(Protocol):
         self.encoder = pyamf.get_encoder(self.encoding)
         self.stream = self.encoder.stream
         self.last_active = datetime.datetime.now()
+        self.in_conference = False
 
     def connectionLost(self, reason):
         """
         Called when a connection is lost
         """
+        print("Instacare Protocol connection lost")
+        self.queueCleanup()
         self.factory.number_of_connections -= 1
 
     def connectionMade(self):
@@ -38,6 +41,21 @@ class InstacareProtocol(Protocol):
         """
         self.factory.number_of_connections += 1
         print("Connection Made")
+
+    def queueCleanup(self):
+        """
+        When a connection is lost clear out user in
+        specified queue.
+        """
+        try:
+            if self.uuid:
+                queue = eval('self.factory.' + self.status)
+
+                if self in queue:
+                    queue.remove(self)
+        except AttributeError:
+            # Do nothing, policy connection, let it die
+            pass
 
     def dataReceived(self, data):
         """
@@ -140,16 +158,17 @@ class InstacareProtocol(Protocol):
         This method handles setting the reconneted user after
         coming from the queue.
         """
+        self.in_conference = True
+        self.conference_id = data['conferenceId']
+
         if data['user_type'] == 'patient':
             self.uuid = data['consultationId']
             self.user_type = 'patient'
-            self.conference_id = data['conferenceId']
-            self.setupConsultationReconnect()
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
-            self.conference_id = data['conferenceId']
-            self.setupConsultationReconnect()
+
+        self.setupConsultationReconnect()
 
     def setupConsultationReconnect(self):
         """
@@ -178,12 +197,14 @@ class InstacareProtocol(Protocol):
             self.user_type = data['user_type']
             self.status = data['status']
             self.consultation_id = False
+            self.in_conference = False
             self.addToQueue()
         else:
             self.uuid = data['empId']
             self.user_type = data['user_type']
             self.status = 'queue'
             self.conference_id = False
+            self.in_conference = False
 
     def addToQueue(self):
         """
@@ -197,7 +218,7 @@ class InstacareProtocol(Protocol):
             self.factory.doctor_queue.append(self)
         elif self.status == 'scheduler_queue':
             self.factory.scheduler_queue.append(self)
- 
+
     def getNext(self, data):
         """
         Loop for employees that checks for new patients in their
@@ -272,7 +293,7 @@ class SocketPolicyProtocol(Protocol):
         """
         Called when a connection is lost
         """
-        print("Policy connection lost")
+        print("Policy connection lost or closed.")
 
     def connectionMade(self):
         """
@@ -308,16 +329,50 @@ appPort = 8000
 policyPort = 843
 policyFile = 'socket-policy.xml'
 
-def killItWithFire():
-    """
-    Finds all InstacareProtocols and checks timestamps
-    """
-    for obj in gc.get_objects():
-        if isinstance(obj, InstacareProtocol):
-            now = datetime.datetime.now()
-            kill_it = now - datetime.timedelta(seconds=10)
-            if obj.last_active <= kill_it:
-                print("KILL IT WITH FIRE!")
-                obj.transport.loseConnection()
-            else:
-                print("HE CAN LIVE, FOR NOW")
+#class KillItWithFire:
+#    """
+#    Garbage cleanup. Checks for lingering open connections
+#    and closes them if they are past the alotted time.
+#    """
+
+#    def __init__(self):
+#        """
+#        Set idle connection time limits in seconds
+#        """
+#        self.queue_time = 30
+#        self.conference_time = 60
+
+#    def kill(self):
+#        """
+#        Find all InstacareProtocol objects
+#        """
+#        print("Running garbage collector.")
+#        for obj in gc.get_objects():
+#            if isinstance(obj, InstacareProtocol):
+#                if obj.in_conference:
+#                    self.killConferenceConnection(obj)
+#                else:
+#                    self.killQueueConnection(obj)
+
+#    def killQueueConnection(self, protocol):
+#        """
+#        """
+#        time_limit = datetime.datetime.now() - \
+#            datetime.timedelta(seconds=self.queue_time)
+#        if protocol.last_active <= time_limit:
+#            print("KILL QUEUE CONNECTION WITH FIRE")
+#            #protocol.transport.loseConnection()
+#        else:
+#            print("QUEUE CONNECTION CAN LIVE FOR NOW")
+
+#    def killConferenceConnection(self, protocol):
+#        """
+#        """
+#        time_limit = datetime.datetime.now() - \
+#            datetime.timedelta(seconds=self.conference_time)
+#        if protocol.last_active <= time_limit:
+#            print("KILL CONFERENCE CONNECTION WITH FIRE")
+#            #protocol.transport.loseConnection()
+#        else:
+#            print("CONFERENCE CONNECTION CAN LIVE FOR NOW")
+

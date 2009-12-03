@@ -11,10 +11,9 @@ except ImportError:
 
 try:
     from sockServer import InstacareFactory, SocketPolicyFactory
-    from sockServer import InstacareProtocol, killItWithFire
     from sockServer import appPort, policyPort
 except ImportError:
-    print("Cannot find sockServer.py file.")
+    print("Cannot find sockServer.py file or other import error.")
     raise SystemExit
 
 import gc
@@ -31,6 +30,32 @@ socketPolicyService = internet.TCPServer(policyPort, policy)
 instacareService.setServiceParent(application)
 socketPolicyService.setServiceParent(application)
 
-# Setup Looping call to clean up dead protocol connections
-l = task.LoopingCall(killItWithFire)
-l.start(3.0)
+def stats():
+    statsConnections()
+    statsQueueList()
+
+def statsConnections():
+    """
+    Displays the number of active connections to the socket
+    server. Each user connection consists of two connections.
+    One for the commands and one for the security policy.
+    """
+    print("Connections: " + instacare.number_of_connections.__str__())
+    return
+
+def statsQueueList():
+    """
+    Displays a count of the queues
+    """
+    print("Admissions Queue Count: " + \
+        instacare.admissions_queue.__len__().__str__())
+    print("Nurse Queue Count: " + \
+        instacare.nurse_queue.__len__().__str__())
+    print("Doctor Queue Count: " + \
+        instacare.doctor_queue.__len__().__str__())
+    print("Scheduler Queue Count: " + \
+        instacare.scheduler_queue.__len__().__str__())
+    return
+
+#t = task.LoopingCall(stats)
+#t.start(5.0)
