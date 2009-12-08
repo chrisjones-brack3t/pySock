@@ -168,6 +168,15 @@ class InstacareProtocol(Protocol):
             self.uuid = data['empId']
             self.user_type = data['user_type']
 
+        print("""
+-----------------------------------------------------------------------
+ Consultation Reconnect
+ User Type: %s
+ User ID: %s
+ Consultation to reconnect to: %s
+-----------------------------------------------------------------------
+        """ % (self.user_type, self.uuid.__str__(), self.conference_id))
+
         self.setupConsultationReconnect()
 
     def setupConsultationReconnect(self):
@@ -180,11 +189,26 @@ class InstacareProtocol(Protocol):
         Consultation is held on the InstacareFactory so that we can
         reconnect the users in a consultation
         """
-        consultation = self.factory.consultations[self.conference_id]
-        if self.user_type == 'patient':
-            consultation.patient = self
-        else:
-            consultation.employee = self
+        try:
+            consultation = self.factory.consultations[self.conference_id]
+            if self.user_type == 'patient':
+                consultation.patient = self
+            else:
+                consultation.employee = self
+
+            print("""
+-----------------------------------------------------------------------
+ User Replaced in Consultation
+ User Type: %s
+ User ID: %s
+ Consultation ID: %s
+-----------------------------------------------------------------------
+            """ % (self.user_type, self.uuid.__str__(), \
+                    consultation.id.__str__()))
+
+        except KeyError:
+            print("Consultation with ID of %s was not found" % \
+                consultation.id.__str__())
 
     def setupNewUser(self, data):
         """
@@ -238,6 +262,24 @@ class InstacareProtocol(Protocol):
             patient = queue.pop(0)
             consultation = ConsultationSession(patient, self)
             self.factory.consultations[consultation.id.__str__()] = consultation
+            print("""
+-----------------------------------------------------------------------
+ Found Patient in Queue
+ Popped patient out of %s Queue
+ Patient ID: %s
+ Created Consultation
+ Consultation UUID: %s
+ Consultation %s added to InstacareFactory
+ Consultation Users:
+   Employee ID: %s
+   Patient ID: %s
+-----------------------------------------------------------------------
+            """ % (self.user_type, patient.uuid.__str__(), \
+                    consultation.id.__str__(), \
+                    consultation.id.__str__(), \
+                    consultation.employee.uuid.__str__(), \
+                    consultation.patient.uuid.__str__()))
+
             response = {'command': 'connectConsultation',
                 'consultID': patient.uuid.__str__(),
                 'conferenceID': consultation.id.__str__()}
@@ -245,6 +287,8 @@ class InstacareProtocol(Protocol):
             patient.transport.write(json.dumps(response))
             self.transport.loseConnection()
             patient.transport.loseConnection()
+        else:
+            print("No users in %s queue" % self.user_type)
 
 class ConsultationSession:
     """
