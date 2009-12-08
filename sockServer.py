@@ -208,7 +208,7 @@ class InstacareProtocol(Protocol):
 
         except KeyError:
             print("Consultation with ID of %s was not found" % \
-                consultation.id.__str__())
+                self.conference_id.__str__())
 
     def setupNewUser(self, data):
         """
