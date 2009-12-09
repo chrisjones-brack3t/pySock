@@ -168,16 +168,43 @@ class InstacareProtocol(Protocol):
             self.uuid = data['empId']
             self.user_type = data['user_type']
 
-        print("""
+        check = self.checkForConsultationExistance(data)
+        if check:
+            print("""
 -----------------------------------------------------------------------
  Consultation Reconnect
  User Type: %s
  User ID: %s
  Consultation to reconnect to: %s
 -----------------------------------------------------------------------
-        """ % (self.user_type, self.uuid.__str__(), self.conference_id))
+            """ % (self.user_type, self.uuid.__str__(), self.conference_id))
 
-        self.setupConsultationReconnect()
+            self.setupConsultationReconnect()
+
+    def checkForConsultationExistance(self, data):
+        """
+        HACK!
+
+        Method verifies that the consultation id passed from the URL
+        exists. This is meant to handle the patient or employee hitting
+        the back button in the browser.
+
+        Temporary fix until Flex interface is rebuilt.
+        """
+
+        consultation = data['conferenceId']
+        try:
+            consultation = self.factory.consultations[data['conferenceId']]
+            return True
+        except KeyError:
+            if self.user_type == 'patient':
+                response = {'command':'handleConsultationError',
+                    'status':'admissions_queue'}
+            else:
+                response = {'command':'handleConsultationError',
+                    'status':''}
+            self.transport.write(json.dumps(response))
+            return False
 
     def setupConsultationReconnect(self):
         """
