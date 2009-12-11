@@ -69,7 +69,11 @@ class InstacareProtocol(Protocol):
             data_dict = json.loads(data)
         except ValueError:
             if data.__str__() == '<policy-file-request/>':
-                self.transport.loseConnection()
+                print("POLICY CONNECTION TO WRONG PORT.")
+                self.factory.loseConnection()
+            else:
+                print("Invalid data. Not JSON or policy request.")
+                self.factory.loseConnection()
             return
 
         data_dict = json.loads(data)
@@ -380,6 +384,9 @@ class SocketPolicyProtocol(Protocol):
         if self.buffer.startswith('<policy-file-request/>'):
             self.transport.write(self.factory.getPolicyFile(self))
             self.transport.loseConnection()
+        else:
+            print("Unknown connection, not asking for policy file.")
+            self.transport.loseConnection()
 
 class SocketPolicyFactory(Factory):
     protocol = SocketPolicyProtocol
@@ -398,7 +405,7 @@ class SocketPolicyFactory(Factory):
 host = 'localhost'
 appPort = 8000
 policyPort = 843
-policyFile = 'socket-policy.xml'
+policyFile = 'crossdomain.xml'
 
 #class KillItWithFire:
 #    """

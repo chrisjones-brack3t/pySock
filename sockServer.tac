@@ -11,7 +11,7 @@ except ImportError:
 
 try:
     from sockServer import InstacareFactory, SocketPolicyFactory
-    from sockServer import appPort, policyPort
+    from sockServer import appPort, policyPort, policyFile
 except ImportError:
     print("Cannot find sockServer.py file or other import error.")
     raise SystemExit
@@ -19,7 +19,7 @@ except ImportError:
 import gc
 
 instacare = InstacareFactory()
-policy = SocketPolicyFactory('socket-policy.xml')
+policy = SocketPolicyFactory(policyFile)
 
 # this is the important bit
 application = service.Application('instacare-socket-server')
