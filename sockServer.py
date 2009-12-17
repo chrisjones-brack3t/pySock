@@ -14,7 +14,7 @@ try:
 except ImportError:
     print("PyAMF library is missing. Download it from http://pyamf.org")
 
-import json, uuid, datetime, gc
+import json, uuid, datetime, os
 
 class InstacareProtocol(Protocol):
     encoding = pyamf.AMF3
@@ -401,11 +401,11 @@ class SocketPolicyFactory(Factory):
         return open(self.policy_file, 'rt').read()
 
 
-
+ROOT_PATH = os.path.dirname(__file__)
 host = 'localhost'
 appPort = 8000
 policyPort = 843
-policyFile = 'crossdomain.xml'
+policyFile = ROOT_PATH + '/crossdomain.xml'
 
 #class KillItWithFire:
 #    """
