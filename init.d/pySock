@@ -14,7 +14,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 DAEMON=/usr/bin/twistd
 SERVICE_NAME=sockServer
-SERVICE_DIR=/home/chris/pysock
+SERVICE_DIR=/home/ubuntu/pysock
 PIDFILE=/var/run/pysock.pid
 LOGFILE=/var/log/pysock.log
 # DAEMON_OPTS="--pidfile=$PIDFILE --logfile=$LOGFILE -y pySock.tac"
