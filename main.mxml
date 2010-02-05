@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute" minWidth="700" minHeight="400" creationComplete="creationCompleteHandler();" xmlns:throbber="com.throbber.*">
+	<mx:Script>
+		<![CDATA[
+			import com.adobe.serialization.json.JSON;
+			
+			public var host:String = '127.0.0.1';
+			public var port:uint = 8000;
+			public var type:String = 'patient';
+			public var consultID:String = '20';
+			public var empID:int = 1;
+			public var status:String = '';
+			public var inputTimeout:int = 10000;
+			public var connected:Boolean = false;
+			
+			private var socket:Socket
+			private var timer:Timer;
+			private var paramList:Object;
+			
+			private function creationCompleteHandler():void {
+				throbber.play();
+				getParams();
+				initSocket();
+			}
+			
+			/**
+			 * Get paramaters passed into swf
+			 */
+			private function getParams():void {
+				paramList = application.parameters;
+				consultID = (paramList['consultID'] ? paramList['consultID']: consultID);
+				host = (paramList['host'] ? paramList['host']: host);
+				port = (paramList['port'] ? paramList['port']: port);
+				type = (paramList['type'] ? paramList['type']: type);
+				empID = (paramList['empID'] ? paramList['empID']: empID);
+				status = (paramList['status'] ? paramList['status']: status);
+			}
+			
+			/**
+			 * Setup the socket connection to the Twisted
+			 * server
+			 */
+			private function initSocket():void {
+				socket = new Socket();			
+				socket.addEventListener(Event.CONNECT, onConnect);
+				socket.addEventListener(Event.CLOSE, onClose);
+				socket.addEventListener(ProgressEvent.SOCKET_DATA, onSocketData);
+				socket.connect(host, port);
+			}
+			
+			/**
+			 * On new connection setup new user
+			 */
+			public function onConnect(e:Event):void {
+				connected = true;
+				setupNewUser();
+				if (type != 'patient') {
+					startTimer();
+				}
+			}
+			
+			/**
+			 * Connection lost or closed
+			 */
+			public function onClose(e:Event):void {
+				connected = false;
+			}
+			
+			/**
+			 * Handles any data received from the socket
+			 */
+			public function onSocketData(e:ProgressEvent):void {
+				var response:String = socket.readMultiByte(socket.bytesAvailable, 'UTF-8');
+				var data:Object = JSON.decode(response);
+				
+				if (data.command == 'connectConsultation') {
+					ExternalInterface.call('nextPage', data.consultID.toString(), data.conferenceID.toString());
+				}
+			}
+			
+			/**
+			 * Handles passing data to socket to setup a newly
+			 * connected user
+			 */
+			public function setupNewUser():void {
+				var socketData:Object = {
+					command: 'setupNewUser',
+					consultationId: consultID,
+					user_type: type,
+					empId: empID,
+					status: status
+				};
+				socket.writeUTFBytes(JSON.encode(socketData));
+				socket.flush();
+			}
+			
+			/**
+			 * All employees will poll the socket server for a new patient
+			 */
+			public function startTimer():void {
+				timer = new Timer(inputTimeout);
+				timer.addEventListener(TimerEvent.TIMER, getNextInLine);
+				timer.start();
+			}
+			
+			/**
+			 * Stops employee polling when they are connected
+			 * with a patient
+			 */
+			public function stopTimer():void {
+				timer.stop();
+			}
+			
+			/**
+			 * Asks socket server for the next patient in the queue.
+			 */
+			public function getNextInLine(e:TimerEvent=null):void {
+				var socketData:Object = {
+					command: "getNext",
+					user_type: type,
+					empId: empID
+				};
+				socket.writeUTFBytes(JSON.encode(socketData));
+				socket.flush();
+			}
+		]]>
+	</mx:Script>
+	<mx:Canvas width="400" height="300" horizontalCenter="0" top="10">
+		<mx:Panel width="350" height="200" layout="absolute" horizontalCenter="0" verticalCenter="-10">
+			<mx:title>Please wait while we find the next available person.</mx:title>
+			<throbber:Throbber id="throbber" width="31" height="31" horizontalCenter="0" verticalCenter="-8"/>
+		</mx:Panel>
+	</mx:Canvas>
+</mx:Application>
